@@ -1,5 +1,5 @@
-from celery import Celery, chain, group, chord
-from pprint import pformat
+from celery import Celery, chain, group
+from celery.schedules import crontab
 from requests_sse import EventSource, InvalidStatusCodeError, InvalidContentTypeError
 import logging, requests, json, logging
 import pandas as pd
@@ -7,6 +7,20 @@ import os
 
 # Create a Celery instance
 app = Celery('tasks', broker='redis://redis:6379/0', backend='redis://redis:6379/0')
+
+app.conf.beat_schedule = {
+    'extract-every-1-minutes': {
+        'task': 'tasks.chained_tasks',
+        'schedule': crontab(minute='*/1'),
+        'args': (200,)
+    },
+
+    'extract-every-5-seconds': {
+        'task': 'tasks.chained_tasks',
+        'schedule': 5.0,
+        'args': (100,)
+    }
+}
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -113,7 +127,7 @@ def log_completed():
 # Chaining the tasks with celery
 @app.task
 def chained_tasks(max_events=5):
-    return chain(extract_data.s(max_events), standardize_data.s())
+    return chain(extract_data.s(max_events), standardize_data.s())()
 
 # Grouping the tasks with celery, in this case,
 # We do multiple micro-batch extractions in parallel

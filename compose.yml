@@ -22,6 +22,20 @@ services:
     volumes:
       - .:/app
 
+  beat:
+    build:
+      context: .
+      dockerfile: dockerfile.worker
+    container_name: beat
+    command: celery -A tasks beat --loglevel=info
+    depends_on:
+      - redis
+      - worker
+    networks:
+      - task_queue_network
+    volumes:
+      - .:/app
+
   client:
     build:
       context: .

@@ -11,8 +11,8 @@ def main():
     # extract_data.delay()
 
     # Example 2: Trigger a chained task (extract_data -> standardize_data)
-    logging.info("Triggering chained_tasks...")
-    chained_tasks.delay()
+    # logging.info("Triggering chained_tasks...")
+    # chained_tasks.delay()
 
     # # Example 3: Trigger a group of tasks (parallel execution)
     # logging.info("Triggering grouped_tasks...")

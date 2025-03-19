@@ -1,5 +1,6 @@
 from celery import Celery, chain, group
 from celery.schedules import crontab
+from celery.signals import task_success, task_failure, beat_init
 from requests_sse import EventSource, InvalidStatusCodeError, InvalidContentTypeError
 import logging, requests, json, logging
 import pandas as pd
@@ -9,6 +10,7 @@ import os
 app = Celery('tasks', broker='redis://redis:6379/0', backend='redis://redis:6379/0')
 
 app.conf.beat_schedule = {
+
     'extract-every-1-minutes': {
         'task': 'tasks.chained_tasks',
         'schedule': crontab(minute='*/1'),
@@ -20,6 +22,7 @@ app.conf.beat_schedule = {
         'schedule': 5.0,
         'args': (100,)
     }
+
 }
 
 # Configure logging
@@ -96,8 +99,8 @@ def standardize_data(df : dict):
     df['size'] = df['size'].fillna(0)
 
     # Save the standardized data to a CSV file with the task ID
-    file_name = 'standardized_data_' + str(standardize_data.request.id) + '.csv'
-    file_path = os.path.join(os.getcwd(), "data" , file_name)
+    file_name = str(standardize_data.request.id) + '.csv'
+    file_path = os.path.join(os.getcwd(), "data/csv" , file_name)
     df.to_csv(file_path, index=False)
     logging.info("Data has been standardized and saved to 'standardized_data.csv'")
     
@@ -108,16 +111,24 @@ def standardize_data(df : dict):
 @app.task
 def save_to_parquet(df : dict):
     logging.info("Saving data to Parquet")
-    file_name = 'standardized_data.parquet'
-    file_path = os.path.join(os.getcwd(), "data" , file_name)
+    file_name = str(save_to_parquet.request.id) + '.parquet'
+    file_path = os.path.join(os.getcwd(), "data/parquet" , file_name)
     df = pd.DataFrame(df)
     print(df)
     df.to_parquet(file_path, engine='pyarrow')
     logging.info("Data has been saved to Parquet")
 
-@app.task
-def log_completed():
-    logging.info("Chord has completed")
+@beat_init.connect
+def beat_init_handler(sender=None, **kwargs):
+    logging.info("Beat has been initialized")
+
+@task_success.connect(sender=standardize_data)
+def standardization_success_handler(sender=None, result=None, **kwargs):
+    logging.info("Standardization completed successfully")
+
+@task_failure.connect(sender=standardize_data)
+def standardization_failure_handler(sender=None, exception=None, traceback=None, **kwargs):
+    logging.error("Standardization failed")
 
 # Below is an example of 2 key primitives in Celery:
 # - Chaining: This is where tasks are executed in a sequence
@@ -127,7 +138,7 @@ def log_completed():
 # Chaining the tasks with celery
 @app.task
 def chained_tasks(max_events=5):
-    return chain(extract_data.s(max_events), standardize_data.s())()
+    return chain(extract_data.s(max_events), standardize_data.s(), save_to_parquet.s())()
 
 # Grouping the tasks with celery, in this case,
 # We do multiple micro-batch extractions in parallel

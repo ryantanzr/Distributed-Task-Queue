@@ -1,4 +1,4 @@
-# Refers to learnings for more analysis on the tools used
+# Refer to learnings for more analysis on the tools used
 It covers the basics & characteristics of celery, celery beat and redis
 with a little reflection of their purpose in the DE world
 
